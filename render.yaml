@@ -3,6 +3,7 @@ services:
     name: engineering-team
     runtime: python
     plan: free
+    rootDir: .
     buildCommand: uv sync --frozen --no-dev
     startCommand: python app.py
     healthCheckPath: /health
