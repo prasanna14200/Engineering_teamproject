@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: engineering-team
+    runtime: python
+    plan: free
+    buildCommand: uv sync --frozen --no-dev
+    startCommand: python app.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: ENGINEERING_TEAM_MODEL
+        value: groq/llama-3.3-70b-versatile
+      - key: GROQ_API_KEY
+        sync: false
