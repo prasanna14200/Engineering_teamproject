@@ -1,4 +1,6 @@
 import datetime
+import gradio as gr
+
 
 class Transaction:
     def __init__(self, date, symbol, quantity, price, type):
@@ -76,7 +78,7 @@ def get_share_price(symbol):
     return share_prices.get(symbol, None)
 
 account = Account.create_account()
-account.deposit(1000.0)
+account.deposit(2000.0)
 account.buy_shares("AAPL", 10)
 account.sell_shares("AAPL", 5)
 print("Portfolio Value: ", account.get_portfolio_value())

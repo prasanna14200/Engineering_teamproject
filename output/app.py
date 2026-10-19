@@ -1,4 +1,4 @@
-```python
+
 import gradio as gr
 import datetime
 import accounts
@@ -126,7 +126,7 @@ demo = gr.Blocks()
 with demo:
     gr.Markdown("Account Management System")
     gr.HTML("<h2>Account Information</h2>")
-    account_info = grAccordion(label="Account Info")
+    account_info = gr.Accordion(label="Account Info")
     with account_info:
         gr.Textbox(label="Account ID", value=str(account.account_id))
         gr.Textbox(label="Balance", value=str(account.balance))
@@ -165,4 +165,3 @@ with demo:
                 with gr.Column():
                     gr.Textbox(label="Transactions", value=str(get_transactions()))
 demo.launch()
-```
