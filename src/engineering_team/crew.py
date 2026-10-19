@@ -4,16 +4,30 @@ from crewai import Agent, Crew, Process, Task
 from crewai import LLM
 from crewai.project import CrewBase, agent, crew, task
 
+from engineering_team.provider import DEFAULT_MODEL, GROQ_API_BASE, normalize_groq_api_key
+
 
 MODEL_TIMEOUT_SECONDS = 90
 AGENT_TIMEOUT_SECONDS = 120
 
 
-def configured_llm() -> LLM:
+def configured_llm(
+    *,
+    max_tokens: int = 4096,
+    timeout: int = MODEL_TIMEOUT_SECONDS,
+) -> LLM:
+    model = os.getenv("ENGINEERING_TEAM_MODEL", DEFAULT_MODEL).strip()
+    options: dict[str, str] = {}
+    if model.startswith("groq/"):
+        api_key = normalize_groq_api_key(os.getenv("GROQ_API_KEY", ""))
+        if api_key:
+            os.environ["GROQ_API_KEY"] = api_key
+            options = {"api_key": api_key, "base_url": GROQ_API_BASE}
     return LLM(
-        model=os.getenv("ENGINEERING_TEAM_MODEL", "groq/llama-3.3-70b-versatile"),
-        timeout=MODEL_TIMEOUT_SECONDS,
-        max_tokens=4096,
+        model=model,
+        timeout=timeout,
+        max_tokens=max_tokens,
+        **options,
     )
 
 

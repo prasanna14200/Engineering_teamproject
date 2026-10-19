@@ -27,32 +27,49 @@ marks that model as manually gated, and Hugging Face currently documents no
 included Inference Provider credits for free accounts. This is not a dependable
 free deployment default.
 
-The app now defaults to `groq/llama-3.3-70b-versatile`, which appears in Groq's
-official quickstart. Access and quotas depend on the provider account. The
-provider's live model-list API requires authentication, so this checkout could
-not verify model access for a specific account. Check current account pricing,
-model access, and rate limits before adding a key. Groq documents base rate
-limits and a paid Developer plan for higher limits, but that does not establish
-that a free quota or this model is available to every account. No model request
-is sent until a key is configured, and the app does not fall back to a
-different or paid provider.
+The app defaults to `groq/llama-3.3-70b-versatile`, which appears in Groq's
+official quickstart. Access and quotas depend on the provider account. The app
+checks the configured key against Groq's authenticated model-list API before
+starting a crew. Check current account pricing, model access, and rate limits
+before adding a key. Groq documents base rate limits and a paid Developer plan
+for higher limits, but that does not establish that a free quota or this model
+is available to every account. The app does not fall back to a different or
+paid provider.
 
-Before running the crew, the app checks Groq's authenticated model list (a
-metadata request, not model inference). If the selected model is missing or the
-key is rejected, the UI reports that clearly and does not start the agents.
-Groq's official quickstart still documents `llama-3.3-70b-versatile`; the
-error "does not exist or you do not have access" therefore can mean either an
-incorrect/stale key or that the model is not enabled for that key. Verify the
-`GROQ_API_KEY` secret in Render, then list the models accessible to that key:
+Before authentication, the service trims surrounding whitespace and matching
+outer quotes, and removes a mistakenly copied `Bearer ` prefix. The web
+process passes its environment to the isolated worker; the worker explicitly
+loads `.env` without overriding variables supplied by Render. The same
+normalized key, `groq/<model-id>`, and canonical Groq API base are passed to
+CrewAI/LiteLLM.
+
+### Diagnose Groq from Render
+
+In the deployed service's Shell, run this first. It makes only the authenticated
+model-list request, not model inference, and never prints credentials:
 
 ```powershell
-curl.exe -sS https://api.groq.com/openai/v1/models `
-  -H "Authorization: Bearer $env:GROQ_API_KEY"
+python -m engineering_team.diagnostics
 ```
 
-Choose an available chat-completion model from the response and set Render's
-`ENGINEERING_TEAM_MODEL` to `groq/<exact-model-id>`. This is explicit; the app
-does not silently switch models or enable a paid service.
+It distinguishes HTTP 401 authentication, HTTP 403 permission, HTTP 404
+resource/model, HTTP 429 rate/quota, and network failures. It prints the
+provider error code/message and request ID when available, plus whether the
+credential needed whitespace/quote/`Bearer ` normalization. Never post the
+secret itself.
+
+If the authenticated catalog lists the configured model, optionally compare a
+minimal direct request with the CrewAI/LiteLLM path:
+
+```powershell
+python -m engineering_team.diagnostics --test-inference
+```
+
+This sends two small chat-completion requests and may count against the
+provider account's quota or billing. Run it only if that is acceptable. If the
+configured model is not listed, choose an available chat-completion model and
+set Render's `ENGINEERING_TEAM_MODEL` to `groq/<exact-model-id>`. The app does
+not silently change providers/models or enable paid services.
 
 Copy `.env.example` to `.env` for local work and set `GROQ_API_KEY`, or set it
 as a secret in Render. `ENGINEERING_TEAM_MODEL` can select another
@@ -110,6 +127,9 @@ Manual Web Service settings:
 | Required environment variable | `GROQ_API_KEY` (secret); `ENGINEERING_TEAM_MODEL` defaults to `groq/llama-3.3-70b-versatile` |
 | Health-check path | `/health` |
 | Instance selection | Free |
+
+After changing `render.yaml`, sync the Blueprint and verify the deployed Git
+commit before starting a new workflow.
 
 Render Free web services currently have 512 MB RAM, 0.1 CPU, ephemeral
 filesystem, and spin down after inactivity. This app limits itself to one

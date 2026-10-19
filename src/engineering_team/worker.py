@@ -5,10 +5,16 @@ import sys
 import traceback
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
+
+from engineering_team.provider import (
+    DEFAULT_MODEL,
+    describe_groq_exception,
+    describe_groq_http_error,
+    groq_request,
+    normalize_groq_api_key,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STAGES = (
@@ -48,33 +54,23 @@ def _missing_provider_key(model: str) -> str | None:
 
 def _verify_groq_model_access(model: str, api_key: str) -> None:
     model_id = model.removeprefix("groq/")
-    request = Request(
-        "https://api.groq.com/openai/v1/models",
-        headers={"Authorization": f"Bearer {api_key}"},
-    )
-    try:
-        with urlopen(request, timeout=15) as response:
-            catalog = json.load(response)
-    except HTTPError as error:
-        if error.code in (401, 403):
-            raise RuntimeError(
-                "Groq rejected GROQ_API_KEY while checking model access. "
-                "Verify the Render secret is a valid Groq API key, then redeploy."
-            ) from error
+    status, headers, catalog = groq_request("/models", api_key)
+    if status != 200:
         raise RuntimeError(
-            f"Groq model-access check failed with HTTP {error.code}; try again later."
-        ) from error
-    except (URLError, TimeoutError) as error:
-        raise RuntimeError(
-            "Could not reach Groq to check model access. Check the service network "
-            "and try again."
-        ) from error
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise RuntimeError("Groq returned an unreadable model catalog response.") from error
+            describe_groq_http_error(
+                status,
+                headers,
+                catalog,
+                operation="model access check",
+                secrets=(api_key,),
+            )
+        )
+    if not catalog or not isinstance(catalog.get("data"), list):
+        raise RuntimeError("Groq model access check returned an invalid model catalog.")
 
     available_models = sorted(
         item["id"]
-        for item in catalog.get("data", [])
+        for item in catalog["data"]
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     )
     if model_id not in available_models:
@@ -91,25 +87,28 @@ def _verify_groq_model_access(model: str, api_key: str) -> None:
 
 
 def run(run_directory: Path) -> None:
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
     state_path = run_directory / "state.json"
     input_path = run_directory / "input.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     request = json.loads(input_path.read_text(encoding="utf-8"))
-    model = os.getenv("ENGINEERING_TEAM_MODEL", "groq/llama-3.3-70b-versatile")
+    model = os.getenv("ENGINEERING_TEAM_MODEL", DEFAULT_MODEL).strip()
+    raw_groq_key = os.getenv("GROQ_API_KEY", "")
+    groq_key = normalize_groq_api_key(raw_groq_key) if model.startswith("groq/") else ""
     missing_key = _missing_provider_key(model)
-    if missing_key:
+    if missing_key or (model.startswith("groq/") and not groq_key):
         state["status"] = "failed"
         state["error"] = (
-            f"{missing_key} is not configured. No model request was sent; "
+            f"{missing_key or 'GROQ_API_KEY'} is not configured. No model request was sent; "
             "add a provider key before starting a run."
         )
         _write_state(state_path, state)
         return
 
     if model.startswith("groq/"):
+        os.environ["GROQ_API_KEY"] = groq_key
         try:
-            _verify_groq_model_access(model, os.environ["GROQ_API_KEY"])
+            _verify_groq_model_access(model, groq_key)
         except RuntimeError as error:
             state["status"] = "failed"
             state["error"] = _safe_error_message(error)
@@ -199,16 +198,8 @@ def run(run_directory: Path) -> None:
         if failed_stage is not None:
             failed_stage["status"] = "failed"
         error_message = _safe_error_message(error)
-        if model.startswith("groq/") and (
-            "model_not_found" in error_message.lower()
-            or "does not exist or you do not have access" in error_message.lower()
-        ):
-            error_message = (
-                f"Groq rejected model '{model.removeprefix('groq/')}'. Verify the "
-                "GROQ_API_KEY secret in Render, then choose a chat model returned "
-                "by Groq's authenticated GET /openai/v1/models endpoint and set "
-                "ENGINEERING_TEAM_MODEL=groq/<model-id>. No fallback model was used."
-            )
+        if model.startswith("groq/"):
+            error_message = describe_groq_exception(error, secrets=(groq_key,)) or error_message
         state["error"] = error_message
         state["files"] = [
             str(path.relative_to(run_directory / "project")).replace(os.sep, "/")

@@ -137,6 +137,10 @@ def _get_run(run_id: str) -> dict[str, Any]:
     return run
 
 
+def _worker_environment() -> dict[str, str]:
+    return os.environ.copy()
+
+
 async def _monitor(run_id: str) -> None:
     global _active_run
     run = _runs[run_id]
@@ -215,7 +219,7 @@ async def start_run(
     request_data = {"requirements": requirements}
     (run_directory / "input.json").write_text(json.dumps(request_data), encoding="utf-8")
     (run_directory / "state.json").write_text(json.dumps(state), encoding="utf-8")
-    process_env = os.environ.copy()
+    process_env = _worker_environment()
     command = [sys.executable, "-m", "engineering_team.worker", str(run_directory)]
     try:
         with (run_directory / "worker.log").open("wb") as log_file:
