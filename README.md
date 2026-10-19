@@ -37,6 +37,23 @@ that a free quota or this model is available to every account. No model request
 is sent until a key is configured, and the app does not fall back to a
 different or paid provider.
 
+Before running the crew, the app checks Groq's authenticated model list (a
+metadata request, not model inference). If the selected model is missing or the
+key is rejected, the UI reports that clearly and does not start the agents.
+Groq's official quickstart still documents `llama-3.3-70b-versatile`; the
+error "does not exist or you do not have access" therefore can mean either an
+incorrect/stale key or that the model is not enabled for that key. Verify the
+`GROQ_API_KEY` secret in Render, then list the models accessible to that key:
+
+```powershell
+curl.exe -sS https://api.groq.com/openai/v1/models `
+  -H "Authorization: Bearer $env:GROQ_API_KEY"
+```
+
+Choose an available chat-completion model from the response and set Render's
+`ENGINEERING_TEAM_MODEL` to `groq/<exact-model-id>`. This is explicit; the app
+does not silently switch models or enable a paid service.
+
 Copy `.env.example` to `.env` for local work and set `GROQ_API_KEY`, or set it
 as a secret in Render. `ENGINEERING_TEAM_MODEL` can select another
 CrewAI/LiteLLM-compatible model, but configure the matching provider key and
